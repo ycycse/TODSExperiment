@@ -1,6 +1,8 @@
 import csv
 from datetime import datetime
 
+from iotdb.utils.IoTDBConstants import TSDataType
+
 
 def extract_table_name(file_name):
     return file_name.split('_')[0]
@@ -17,20 +19,20 @@ def extract_meta_data(header, split_char):
         column_names_list.append(column_names[i].split('.')[-1])
     return table_name, column_names_list
 
-def read_csv_files(filepath, split_char='@'):
+def read_csv_files(filepath, database:str, split_char:str):
     with open(filepath, mode='r') as csv_file:
-        reader = csv.reader(csv_file)
+        reader = csv.reader(csv_file, delimiter=split_char)
+
         headers = next(reader)  
         if len(headers) != 1:
-            raise ValueError(f"Invalid header: {headers}")
-        table_name, column_names = extract_meta_data(headers[0], split_char)
-        values_placeholder = ', '.join(['?'] * len(column_names))  # 构建占位符
-        temp_sql = f"INSERT INTO {table_name}({', '.join(column_names)}) VALUES ({values_placeholder})"
-        temp_data = []
+            column_names = headers
+            table_name = '_'.join(column_names[1].split('.')[:-1])
+        else:
+            table_name, column_names = extract_meta_data(headers[0], split_char)
 
-        data_type = [None] * len(column_names)
-        data_type[0] = 'INTEGER'
-        create_table_sql = None
+        data_types = [None] * len(column_names)
+        data_types[0] = 'INTEGER'
+        temp_data = []
 
         for row in reader:
             if len(row) != 1:
@@ -50,18 +52,27 @@ def read_csv_files(filepath, split_char='@'):
                     data_items.append(None)
                 else:
                     data_items.append(data_item)
-                    data_type[i] = parse_data_type(data_item)
+                    data_types[i] = parse_data_type(data_item, database)
             temp_data.append(data_items)
-        create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name}({', '.join([f'{column_names[i]} {data_type[i]}' for i in range(len(column_names))])})" 
-        print(f"Create table sql: {create_table_sql}", flush=True)
     print(f"Table name: {table_name}", flush=True)
-    return create_table_sql, temp_sql, temp_data
+    return table_name, temp_data, data_types, column_names
 
-def parse_data_type(value: str):
-    if value.startswith('"'):
-        return 'TEXT'
+def parse_data_type(value: str, database: str):
+    if database == "sqlite":
+        if value.startswith('"'):
+            return 'TEXT'
+        else:
+            return 'REAL'
+    elif database == "duckdb":
+        if value.startswith('"'):
+            return 'VARCHAR'
+        else:
+            return 'DOUBLE'
     else:
-        return 'REAL'
+        if value.startswith('"'):
+            return TSDataType.TEXT
+        else:
+            return TSDataType.DOUBLE
     
 def parse_timestamp(value:str):
     dt = datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%f%z')

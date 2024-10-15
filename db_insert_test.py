@@ -1,13 +1,11 @@
 import argparse
-import time
 import os
-import random
+
+from sqlalchemy_utils import table_name
+
 from database_builder import setup_database
 from dataset_processor import read_csv_files
 
-
-def generate_ordered_timeseries_data(num_points, start_time):
-    return [(start_time + i, round(random.uniform(0.0, 100.0), 2)) for i in range(num_points)]
 
 # for sqlite and duckdb
 def measure_insert_time(cursor, create_table_sql, sql, data, conn):
@@ -21,19 +19,32 @@ def measure_insert_time(cursor, create_table_sql, sql, data, conn):
     end_time = time.time()
     return end_time - start_time
 
-def run_insertions(db_module, db_name, folder_path):
+
+def generate_sql(table_nam, data_types, column_names):
+    values_placeholder = ', '.join(['?'] * len(column_names))  # 构建占位符
+    sql = f"INSERT INTO {table_nam}({', '.join(column_names)}) VALUES ({values_placeholder})"
+    create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_nam}({', '.join([f'{column_names[i]} {data_types[i]}' for i in range(len(column_names))])})"
+
+    return sql, create_table_sql
+
+# for sqlite and duckdb
+def run_insertions(db_module, db_name, folder_path, database, split_char):
     conn, cursor = setup_database(db_module, db_name)
     print("start inserting test", flush=True)
-        # data = generate_ordered_timeseries_data(num_points, start_time)
     total_points = 0
     total_time_cost = 0
     for root, dirs, files in os.walk(folder_path):
         for file in files:
             if file.endswith(".csv"):
+
                 file_path = os.path.join(root, file)
-                create_table_sql, sql, data = read_csv_files(file_path)
+
+                table_nam, data, data_types, column_names = read_csv_files(file_path, database, split_char)
+
+                insert_sql, create_table_sql = generate_sql(table_nam, data_types, column_names)
+
                 total_points += len(data)
-                total_time_cost += measure_insert_time(cursor, create_table_sql, sql, data, conn)
+                total_time_cost += measure_insert_time(cursor, create_table_sql, insert_sql, data, conn)
 
                 print("Avg throughput: ", total_points / total_time_cost, flush=True)
 
@@ -43,39 +54,48 @@ def run_insertions(db_module, db_name, folder_path):
         file.write(f"ty_dataset_insert: {total_time_cost:.2f} seconds")
 
 # for iotdb
-def run_iotdb_insertions(batch_size, total_inserts, start_time):
+def run_iotdb_insertions(folder_path, split_char):
     session = create_session()
+    total_points = 0
     total_time_cost = 0
-    for _ in range(total_inserts):
-        total_time_cost += measure_insert_time("root.test", session, batch_size, start_time)
-        start_time += batch_size
+
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith(".csv"):
+                file_path = os.path.join(root, file)
+                table_nam, data, data_types, column_names= read_csv_files(file_path, "iotdb", split_char)
+                total_points += len(data)
+                total_time_cost += measure_iotdb_insert_time(session, table_nam, data, data_types, column_names)
+
+                print("Avg throughput: ", total_points / total_time_cost, flush=True)
+
     # flush_iotdb_buffer(session)
     close_session(session)
-    print(f"IoTDB: Total time to insert {batch_size} points x {total_inserts} times: {total_time_cost:.2f} seconds.")
+    print(f"IoTDB: Total time to insert iotdb: {total_time_cost:.2f} seconds.", flush=True)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run timeseries data insertion for specified database.")
     parser.add_argument('--database', type=str, choices=['duckdb', 'sqlite','iotdb'], help='Database to run (duckdb or sqlite)')
-    parser.add_argument('--batch_size', type=int, help='Number of points to insert per batch', default=100000)
-    parser.add_argument('--total_inserts', type=int, help='Total number of times to insert batch_size points', default=100)
     parser.add_argument('--file_path', type=str, help='Path to the csv file')
+    parser.add_argument('--split_char', type=str, default='@')
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
-    batch_size = args.batch_size
-    total_inserts = args.total_inserts
-    file_path = args.file_path
-    if args.database == 'duckdb':
-        print("start duckdb inserting test", flush=True)
-        import duckdb
-        run_insertions(duckdb, 'TY.duckdb', file_path)
-    elif args.database == 'sqlite':
-        print("start sqlite inserting test", flush=True)
-        import sqlite3
-        run_insertions(sqlite3, 'TY_SQLITE.db', file_path)
-    elif args.database == 'iotdb':
-        from iotdb_tool import *
-        run_iotdb_insertions(batch_size, total_inserts, 0)
-    else:
-        print("Database not supported. Please choose from duckdb, sqlite, or iotdb.")
+    try:
+        if args.database == 'duckdb':
+            print("start duckdb inserting test", flush=True)
+            import duckdb
+            run_insertions(duckdb, 'TY.duckdb', args.file_path, "duckdb", args.split_char)
+        elif args.database == 'sqlite':
+            print("start sqlite inserting test", flush=True)
+            import sqlite3
+            run_insertions(sqlite3, 'TY_SQLITE.db', args.file_path, "sqlite", args.split_char)
+        elif args.database == 'iotdb':
+            print("start iotdb inserting test", flush=True)
+            from iotdb_tool import *
+            run_iotdb_insertions(args.file_path, args.split_char)
+        else:
+            print("Database not supported. Please choose from duckdb, sqlite, or iotdb.")
+    except Exception as e:
+        print(f"Error: {e}", flush=True)

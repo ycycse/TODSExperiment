@@ -1,10 +1,10 @@
-from iotdb.Session import Session
-from iotdb.utils.BitMap import BitMap
-from iotdb.utils.IoTDBConstants import TSDataType, TSEncoding, Compressor
-from iotdb.utils.Tablet import Tablet
-from iotdb.utils.NumpyTablet import NumpyTablet
 import random
 import time
+
+from iotdb.Session import Session
+from iotdb.utils.IoTDBConstants import TSDataType
+from iotdb.utils.Tablet import Tablet
+
 
 def create_session():
     session = Session.init_from_node_urls(
@@ -21,18 +21,13 @@ def create_session():
 def close_session(session):
     session.close()
 
-def measure_insert_time(schema_name, session, batch_size, start_time):
-    
-    data_types = [TSDataType.DOUBLE]
-    measurements = ["value"]
-    values= [[random.random()] for _ in range(batch_size)]
-    timestamps = [start_time + i for i in range(batch_size)]
-    
-    # session.create_time_series(schema_name + ".value", TSDataType.DOUBLE, TSEncoding.PLAIN, Compressor.SNAPPY)
-    print(f"Inserting {batch_size} points into {schema_name}...with timestamps from {start_time} to {start_time + batch_size - 1}")
-    start_time = time.time()
+def measure_iotdb_insert_time(session, table_nam, data, data_types, measurements):
 
-    tablet = Tablet(schema_name, measurements, data_types, values, timestamps)
+    values= [item[1:] for item in data]
+    timestamps = [item[0] for item in data]
+    device_id = table_nam.replace('_','.')
+    start_time = time.time()
+    tablet = Tablet(device_id, measurements, data_types, values, timestamps)
     session.insert_tablet(tablet)
     
     end_time = time.time()
