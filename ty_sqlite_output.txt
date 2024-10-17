@@ -1,0 +1,7 @@
+nohup: ignoring input
+start sqlite inserting test
+start inserting test
+Table name: root_cty_trans_07_1001182807_2502811
+Avg throughput:  409433.19364060386
+Table name: root_cty_trans_07_1001202557_88002510504
+Avg throughput:  5662.135966775831

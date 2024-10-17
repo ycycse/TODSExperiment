@@ -15,10 +15,8 @@ def test_query_time(cursor):
     print(f"Query time: {query_time:.6f} seconds")
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run timeseries data insertion for specified database.")
+    parser = argparse.ArgumentParser(description="Run timeseries data query for specified database.")
     parser.add_argument('--database', type=str, choices=['duckdb', 'sqlite','iotdb'], help='Database to run (duckdb or sqlite)')
-    parser.add_argument('--batch_size', type=int, help='Number of points to insert per batch', default=100000)
-    parser.add_argument('--total_inserts', type=int, help='Total number of times to insert batch_size points', default=100)
     return parser.parse_args()
 
 def measure_query(db_module, db_name, sql):
@@ -27,6 +25,7 @@ def measure_query(db_module, db_name, sql):
     start_time = time.time()
     cursor.execute(sql)
     results = cursor.fetchall()
+    print(results)
     end_time = time.time()
 
     query_time = end_time - start_time
@@ -39,16 +38,12 @@ def measure_query(db_module, db_name, sql):
 
 if __name__ == "__main__":
     args = parse_args()
-    batch_size = 100000
-    total_inserts = 100
     if args.database == 'duckdb':
         import duckdb
-        measure_query(duckdb, 'timeseries.duckdb',"SELECT * FROM timeseriesPoints")
-        measure_query(duckdb, 'timeseries.duckdb',"SELECT * FROM timeseriesPoints WHERE timestamp > 7000000 and timestamp < 8000000")
+        measure_query(duckdb, 'timeseries.duckdb',"SELECT count(*) FROM root_cty_trans_07_1001202557_88002510504")
     elif args.database == 'sqlite':
         import sqlite3
-        measure_query(sqlite3, 'timeseries.db', "SELECT * FROM timeseriesPoints")
-        measure_query(sqlite3, 'timeseries.db', "SELECT * FROM timeseriesPoints WHERE timestamp > 7000000 and timestamp < 8000000")
+        measure_query(sqlite3, 'TY_SQLITE.db', "SELECT avg(TY_0002_02_1) FROM root_cty_trans_07_1001202557_88002510504")
     elif args.database == 'iotdb':
         from iotdb_tool import *
         session = create_session()

@@ -1,0 +1,6 @@
+nohup: ignoring input
+start iotdb inserting test
+Table name: root_cty_trans_07_1001182807_2502811
+Avg throughput:  664024.926124001
+Table name: root_cty_trans_07_1001202557_88002510504
+Avg throughput:  142595.48251903828

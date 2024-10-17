@@ -1,0 +1,7 @@
+nohup: ignoring input
+start iotdb inserting test
+Table name: root_cty_trans_07_1001182807_2502811
+Avg throughput:  21765.120085314848
+Table name: root_cty_trans_07_1001202557_88002510504
+Avg throughput:  2244.097546476446
+IoTDB: Total time to insert iotdb: 269.25 seconds.

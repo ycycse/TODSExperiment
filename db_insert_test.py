@@ -5,19 +5,31 @@ from sqlalchemy_utils import table_name
 
 from database_builder import setup_database
 from dataset_processor import read_csv_files
-
+from memory_profiler import profile
+import time
+import gc
 
 # for sqlite and duckdb
-def measure_insert_time(cursor, create_table_sql, sql, data, conn):
+def measure_insert_time(cursor, create_table_sql, sql, data, conn, batch_size=10000):
+
+    total_data_points = len(data)    
+    total_time = 0
     cursor.execute(create_table_sql)
-    cursor.execute("PRAGMA synchronous = OFF")
-    start_time = time.time()
-    cursor.execute("BEGIN")
-    cursor.executemany(sql, data)
-    cursor.execute("COMMIT")
-    conn.commit() 
-    end_time = time.time()
-    return end_time - start_time
+    # cursor.execute("PRAGMA synchronous = OFF")
+
+    for i in range(0, total_data_points, batch_size):
+        start_time = time.time()
+        temp_data = data[i:min(i + batch_size, total_data_points)]
+        cursor.execute("BEGIN TRANSACTION")
+        for row in temp_data:
+            cursor.execute(sql, row)
+        cursor.execute("COMMIT")
+        conn.commit() 
+        temp_data = None
+        total_time += time.time() - start_time
+
+    gc.collect()
+    return total_time
 
 
 def generate_sql(table_nam, data_types, column_names):
@@ -46,6 +58,10 @@ def run_insertions(db_module, db_name, folder_path, database, split_char):
                 total_points += len(data)
                 total_time_cost += measure_insert_time(cursor, create_table_sql, insert_sql, data, conn)
 
+                data = None
+                data_types = None
+                column_names = None
+
                 print("Avg throughput: ", total_points / total_time_cost, flush=True)
 
     conn.close()
@@ -59,15 +75,19 @@ def run_iotdb_insertions(folder_path, split_char):
     total_points = 0
     total_time_cost = 0
 
+    index = 0
     for root, dirs, files in os.walk(folder_path):
         for file in files:
             if file.endswith(".csv"):
+                if index == 2:
+                    break
                 file_path = os.path.join(root, file)
                 table_nam, data, data_types, column_names= read_csv_files(file_path, "iotdb", split_char)
                 total_points += len(data)
                 total_time_cost += measure_iotdb_insert_time(session, table_nam, data, data_types, column_names)
-
+                data = None
                 print("Avg throughput: ", total_points / total_time_cost, flush=True)
+                index += 1
 
     # flush_iotdb_buffer(session)
     close_session(session)
@@ -99,3 +119,4 @@ if __name__ == "__main__":
             print("Database not supported. Please choose from duckdb, sqlite, or iotdb.")
     except Exception as e:
         print(f"Error: {e}", flush=True)
+        raise e
